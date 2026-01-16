@@ -1,0 +1,542 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Compact Album Rater</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <style>
+        :root {
+            --bg: #000000;
+            --card-bg: #1a1a1a;
+            --accent: #1db954; 
+            --text: #ffffff;
+            --text-dim: #b3b3b3;
+            --danger: #e91429;
+            --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+        }
+
+        * { box-sizing: border_box; margin: 0; padding: 0; user-select: none; -webkit-user-select: none; }
+
+        body {
+            background-color: var(--bg);
+            color: var(--text);
+            font-family: var(--font);
+            height: 100dvh; 
+            width: 100vw;
+            overflow: hidden; 
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+        }
+
+        /* --- INTERACTIVE CARD (SCREEN) --- */
+        #interactive-area {
+            position: relative;
+            width: 95%;
+            max-width: 450px;
+            background: var(--card-bg);
+            border-radius: 20px;
+            padding: 20px 25px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.5);
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+            max-height: 90dvh; 
+        }
+
+        /* --- EXPORT CARD (HIDDEN) --- */
+        #export-container {
+            position: fixed;
+            top: -9999px;
+            left: -9999px;
+            width: 1200px; 
+            background: #111;
+            padding: 60px;
+            display: flex;
+            flex-direction: column;
+            gap: 40px;
+            font-family: var(--font);
+            color: white;
+            z-index: -1;
+        }
+
+        .header { text-align: center; display: flex; flex-direction: column; gap: 5px; }
+        
+        input[type="text"] {
+            background: transparent;
+            border: none;
+            color: var(--text);
+            text-align: center;
+            width: 100%;
+            outline: none;
+            font-family: var(--font);
+        }
+        
+        .export-title { font-size: 3.5rem; font-weight: 800; text-align: center; color: white; line-height: 1.1; margin-bottom: 10px; }
+        .export-artist { font-size: 2rem; color: white; font-weight: 500; text-transform: uppercase; letter-spacing: 2px; text-align: center; } 
+
+        .album-input { font-size: 1.6rem; font-weight: 800; }
+        .artist-input { font-size: 1rem; color: white; font-weight: 500; text-transform: uppercase; letter-spacing: 1px; }
+
+        .metrics { display: flex; flex-direction: column; gap: 10px; flex: 1; justify-content: center; }
+        .export-metrics { display: flex; flex-direction: column; gap: 20px; width: 100%; }
+
+        .metric-row {
+            display: grid;
+            grid-template-columns: 35% 1fr 10%;
+            align-items: center;
+            gap: 10px;
+            font-size: 0.85rem;
+        }
+
+        .export-row {
+            display: flex;
+            align-items: center;
+            gap: 30px;
+        }
+        .export-label { width: 250px; font-size: 1.5rem; font-weight: 500; color: #ccc; }
+        .export-bar-bg { flex: 1; height: 16px; background: #333; border-radius: 8px; overflow: hidden; }
+        .export-bar-fill { height: 100%; background: var(--accent); width: 0%; }
+        .export-score { width: 100px; font-size: 2rem; font-weight: 700; text-align: right; }
+
+        .label { color: var(--text-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .score-display { font-weight: 700; text-align: right; font-variant-numeric: tabular-nums; }
+
+        input[type="range"] {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 100%;
+            height: 6px;
+            background: #333;
+            border-radius: 3px;
+            outline: none;
+            cursor: pointer;
+        }
+
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 14px;
+            height: 14px;
+            background: var(--text);
+            border-radius: 50%;
+            box-shadow: 0 0 10px rgba(0,0,0,0.5);
+            margin-top: -4px;
+        }
+        
+        input[type="range"]::-moz-range-thumb {
+            width: 14px;
+            height: 14px;
+            background: var(--text);
+            border: none;
+            border-radius: 50%;
+        }
+
+        .footer {
+            border-top: 1px solid #333;
+            padding-top: 15px;
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-end;
+        }
+
+        .export-footer {
+            margin-top: 40px;
+            border-top: 3px solid #333;
+            padding-top: 40px;
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-end;
+        }
+
+        .final-label { font-size: 0.8rem; color: #555; text-transform: uppercase; letter-spacing: 2px; }
+        .final-score { font-size: 3rem; line-height: 1; font-weight: 800; color: var(--text); }
+        .final-score span { font-size: 1rem; font-weight: 400; color: #555; }
+
+        .export-final-label { font-size: 1.5rem; color: #666; text-transform: uppercase; letter-spacing: 4px; }
+        .export-final-score { font-size: 8rem; line-height: 0.8; font-weight: 800; color: white; }
+        .export-final-score span { font-size: 2.5rem; font-weight: 400; color: #666; margin-left: 10px; }
+
+        /* --- TOOLBAR --- */
+        .toolbar {
+            position: absolute;
+            bottom: 20px;
+            display: flex;
+            gap: 15px;
+            background: rgba(30,30,30,0.9);
+            padding: 10px 20px;
+            border-radius: 50px;
+            backdrop-filter: blur(10px);
+            border: 1px solid #333;
+            z-index: 100;
+        }
+
+        .icon-btn {
+            background: none;
+            border: none;
+            color: var(--text-dim);
+            font-size: 1.2rem;
+            cursor: pointer;
+            transition: 0.2s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .icon-btn:hover { color: var(--text); transform: scale(1.1); }
+        .icon-btn.save { color: var(--accent); }
+
+        /* --- HISTORY MODAL --- */
+        #history-modal {
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.95);
+            z-index: 200;
+            display: none; 
+            flex-direction: column;
+            padding: 20px;
+        }
+
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            font-size: 1.5rem;
+            font-weight: 700;
+            width: 100%;
+            /* No padding here, handled by button margin */
+        }
+        
+        .btn-close {
+            background: #333;
+            border: none;
+            color: white;
+            min-width: 40px; 
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            font-size: 1.2rem;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: 0.2s;
+            /* FIXED: Force margin from the right edge */
+            margin-right: 20px !important; 
+        }
+        .btn-close:hover { background: #444; transform: rotate(90deg); }
+
+        .history-list {
+            flex: 1;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            padding-bottom: 50px;
+            /* Extra padding to prevent scrollbar overlap on items */
+            padding-right: 15px; 
+        }
+
+        .history-item {
+            background: #222;
+            padding: 15px;
+            border-radius: 10px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-left: 4px solid var(--accent);
+            cursor: pointer; 
+        }
+
+        .h-content { flex: 1; }
+        .h-info div:first-child { font-weight: 700; font-size: 1rem; }
+        .h-info div:last-child { font-size: 0.85rem; color: #888; }
+        
+        .h-actions {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            padding-left: 15px;
+        }
+
+        .h-score { font-size: 1.2rem; font-weight: 800; color: var(--accent); }
+        
+        .btn-delete {
+            background: #333;
+            border: 1px solid #444;
+            color: #888;
+            cursor: pointer;
+            font-size: 1.1rem;
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s;
+            z-index: 20; 
+        }
+        
+        .btn-delete:hover { 
+            background: var(--danger); 
+            color: white; 
+            border-color: var(--danger);
+        }
+    </style>
+</head>
+<body>
+
+    <!-- SCREEN INTERFACE (Responsive) -->
+    <div id="interactive-area">
+        <div class="header">
+            <input type="text" class="album-input" id="in-album" placeholder="Album Title">
+            <input type="text" class="artist-input" id="in-artist" placeholder="Artist Name">
+        </div>
+
+        <div class="metrics" id="metrics-container"></div>
+
+        <div class="footer">
+            <div class="final-label">Overall<br>Rating</div>
+            <div class="final-score" id="total-score">0<span>/100</span></div>
+        </div>
+    </div>
+
+    <!-- EXPORT TEMPLATE (Fixed Size 1200px) -->
+    <div id="export-container">
+        <div class="header">
+            <div class="export-title" id="ex-album">Album Title</div>
+            <div class="export-artist" id="ex-artist">Artist Name</div>
+        </div>
+
+        <div class="export-metrics" id="export-metrics"></div>
+
+        <div class="export-footer">
+            <div class="export-final-label">Final Rating</div>
+            <div class="export-final-score" id="ex-total">0<span>/100</span></div>
+        </div>
+    </div>
+
+    <!-- TOOLBAR -->
+    <div class="toolbar" data-html2canvas-ignore>
+        <button class="icon-btn" onclick="reset()" title="Reset">↺</button>
+        <button class="icon-btn" onclick="toggleHistory()" title="History">☰</button>
+        <button class="icon-btn save" onclick="saveAndDownload()" title="Download PNG">⬇</button>
+    </div>
+
+    <!-- HISTORY MODAL -->
+    <div id="history-modal">
+        <div class="modal-header">
+            <span>History</span>
+            <button class="btn-close" onclick="toggleHistory()">✕</button>
+        </div>
+        <div class="history-list" id="history-list"></div>
+    </div>
+
+<script>
+    const CATEGORIES = [
+        { label: "Writing", weight: 25 },
+        { label: "Musicality", weight: 20 },
+        { label: "Production", weight: 15 },
+        { label: "Performance", weight: 15 },
+        { label: "Cohesion", weight: 10 },
+        { label: "Innovation", weight: 10 },
+        { label: "Replay", weight: 5 },
+    ];
+
+    function init() {
+        const container = document.getElementById('metrics-container');
+        const exportContainer = document.getElementById('export-metrics');
+        
+        CATEGORIES.forEach((cat, idx) => {
+            // Interactive
+            const row = document.createElement('div');
+            row.className = 'metric-row';
+            row.innerHTML = `
+                <div class="label" title="${cat.label}">${cat.label}</div>
+                <input 
+                    type="range" 
+                    id="slider-${idx}" 
+                    min="0" max="10" step="0.5" value="0"
+                    oninput="handleInput(${idx}, this.value)"
+                >
+                <div class="score-display" id="disp-${idx}">0</div>
+            `;
+            container.appendChild(row);
+
+            // Export
+            const exRow = document.createElement('div');
+            exRow.className = 'export-row';
+            exRow.innerHTML = `
+                <div class="export-label">${cat.label}</div>
+                <div class="export-bar-bg">
+                    <div class="export-bar-fill" id="ex-bar-${idx}"></div>
+                </div>
+                <div class="export-score" id="ex-score-${idx}">0</div>
+            `;
+            exportContainer.appendChild(exRow);
+        });
+        updateTotal();
+    }
+
+    function handleInput(idx, val) {
+        // Screen
+        document.getElementById(`disp-${idx}`).innerText = val;
+        const slider = document.getElementById(`slider-${idx}`);
+        const percent = (val / 10) * 100;
+        slider.style.background = `linear-gradient(to right, var(--accent) ${percent}%, #333 ${percent}%)`;
+        
+        // Export
+        document.getElementById(`ex-score-${idx}`).innerText = val;
+        document.getElementById(`ex-bar-${idx}`).style.width = `${percent}%`;
+
+        updateTotal();
+    }
+
+    function updateTotal() {
+        let weightedSum = 0;
+        CATEGORIES.forEach((cat, idx) => {
+            const val = parseFloat(document.getElementById(`slider-${idx}`).value) || 0;
+            weightedSum += (val / 10) * cat.weight;
+        });
+
+        let cleanTotal = Math.round(weightedSum * 100) / 100;
+        
+        document.getElementById('total-score').innerHTML = `${cleanTotal}<span>/100</span>`;
+        document.getElementById('ex-total').innerHTML = `${cleanTotal}<span>/100</span>`;
+
+        const hue = Math.max(0, (cleanTotal - 40) * 2.5); 
+        const color = `hsl(${hue}, 80%, 55%)`;
+        document.documentElement.style.setProperty('--accent', color);
+        
+        CATEGORIES.forEach((_, idx) => {
+            const slider = document.getElementById(`slider-${idx}`);
+            const val = slider.value;
+            const percent = (val / 10) * 100;
+            slider.style.background = `linear-gradient(to right, ${color} ${percent}%, #333 ${percent}%)`;
+            document.getElementById(`ex-bar-${idx}`).style.background = color;
+        });
+
+        document.getElementById('ex-album').innerText = document.getElementById('in-album').value || "Album";
+        document.getElementById('ex-artist').innerText = document.getElementById('in-artist').value || "Artist";
+    }
+
+    function saveAndDownload() {
+        const album = document.getElementById('in-album').value || "Album";
+        const artist = document.getElementById('in-artist').value;
+        const total = document.getElementById('total-score').innerText.split('/')[0];
+        
+        const scores = CATEGORIES.map((_, i) => document.getElementById(`slider-${i}`).value);
+        let history = JSON.parse(localStorage.getItem('compactRates') || "[]");
+        const id = Date.now();
+        history.unshift({ id, date: id, album, artist, scores, total });
+        localStorage.setItem('compactRates', JSON.stringify(history));
+
+        const element = document.getElementById('export-container');
+        html2canvas(element, { 
+            scale: 1, 
+            backgroundColor: "#111", 
+            windowWidth: 1200,
+            windowHeight: 1200
+        }).then(canvas => {
+            const link = document.createElement('a');
+            link.download = `${album.replace(/\s+/g, '_')}_rating.png`;
+            link.href = canvas.toDataURL();
+            link.click();
+        });
+    }
+
+    function toggleHistory() {
+        const modal = document.getElementById('history-modal');
+        if (modal.style.display === 'flex') {
+            modal.style.display = 'none';
+        } else {
+            modal.style.display = 'flex';
+            renderHistoryList();
+        }
+    }
+
+    function renderHistoryList() {
+        const list = document.getElementById('history-list');
+        let history = JSON.parse(localStorage.getItem('compactRates') || "[]");
+        
+        if (!history.length) {
+            list.innerHTML = '<div style="text-align:center; color:#666; margin-top:20px;">No ratings yet</div>';
+            return;
+        }
+
+        let dirty = false;
+        history = history.map((item, index) => {
+            if (!item.id) { item.id = Date.now() + index; dirty = true; }
+            return item;
+        });
+        if (dirty) localStorage.setItem('compactRates', JSON.stringify(history));
+
+        list.innerHTML = '';
+        history.forEach(item => {
+            const el = document.createElement('div');
+            el.className = 'history-item';
+            el.addEventListener('click', () => loadHistoryItem(item.id));
+            
+            el.innerHTML = `
+                <div class="h-content">
+                    <div class="h-info">
+                        <div>${item.album || 'Untitled'}</div>
+                        <div>${item.artist || 'Unknown'}</div>
+                    </div>
+                </div>
+                <div class="h-actions">
+                    <span class="h-score" style="color:var(--accent)">${item.total}</span>
+                    <button class="btn-delete" id="del-${item.id}" title="Delete">🗑</button>
+                </div>
+            `;
+            list.appendChild(el);
+
+            document.getElementById(`del-${item.id}`).addEventListener('click', (e) => {
+                e.stopPropagation(); 
+                deleteHistoryItem(item.id);
+            });
+        });
+    }
+
+    function deleteHistoryItem(id) {
+        if (!confirm('Delete this rating permanently?')) return;
+        
+        let history = JSON.parse(localStorage.getItem('compactRates') || "[]");
+        history = history.filter(item => item.id !== id);
+        
+        localStorage.setItem('compactRates', JSON.stringify(history));
+        renderHistoryList();
+    }
+
+    function loadHistoryItem(id) {
+        const history = JSON.parse(localStorage.getItem('compactRates') || "[]");
+        const item = history.find(i => i.id === id);
+        
+        if (item) {
+            document.getElementById('in-album').value = item.album;
+            document.getElementById('in-artist').value = item.artist;
+            item.scores.forEach((s, i) => {
+                const safeScore = s || 0;
+                document.getElementById(`slider-${i}`).value = safeScore;
+                handleInput(i, safeScore);
+            });
+            updateTotal();
+            toggleHistory(); 
+        }
+    }
+
+    function reset() {
+        document.getElementById('in-album').value = "";
+        document.getElementById('in-artist').value = "";
+        CATEGORIES.forEach((_, i) => {
+            document.getElementById(`slider-${i}`).value = 0;
+            handleInput(i, 0);
+        });
+    }
+
+    init();
+</script>
+</body>
+</html>
