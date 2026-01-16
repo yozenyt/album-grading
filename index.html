@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Compact Album Rater</title>
+    <title>Album Rater</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
     <style>
         :root {
@@ -206,7 +206,6 @@
             font-size: 1.5rem;
             font-weight: 700;
             width: 100%;
-            /* No padding here, handled by button margin */
         }
         
         .btn-close {
@@ -223,7 +222,6 @@
             align-items: center;
             justify-content: center;
             transition: 0.2s;
-            /* FIXED: Force margin from the right edge */
             margin-right: 20px !important; 
         }
         .btn-close:hover { background: #444; transform: rotate(90deg); }
@@ -235,7 +233,6 @@
             flex-direction: column;
             gap: 10px;
             padding-bottom: 50px;
-            /* Extra padding to prevent scrollbar overlap on items */
             padding-right: 15px; 
         }
 
@@ -288,7 +285,6 @@
 </head>
 <body>
 
-    <!-- SCREEN INTERFACE (Responsive) -->
     <div id="interactive-area">
         <div class="header">
             <input type="text" class="album-input" id="in-album" placeholder="Album Title">
@@ -303,29 +299,25 @@
         </div>
     </div>
 
-    <!-- EXPORT TEMPLATE (Fixed Size 1200px) -->
     <div id="export-container">
         <div class="header">
             <div class="export-title" id="ex-album">Album Title</div>
             <div class="export-artist" id="ex-artist">Artist Name</div>
         </div>
-
         <div class="export-metrics" id="export-metrics"></div>
-
         <div class="export-footer">
             <div class="export-final-label">Final Rating</div>
             <div class="export-final-score" id="ex-total">0<span>/100</span></div>
         </div>
     </div>
 
-    <!-- TOOLBAR -->
     <div class="toolbar" data-html2canvas-ignore>
         <button class="icon-btn" onclick="reset()" title="Reset">↺</button>
         <button class="icon-btn" onclick="toggleHistory()" title="History">☰</button>
-        <button class="icon-btn save" onclick="saveAndDownload()" title="Download PNG">⬇</button>
+        <!-- Changed Icon to Share -->
+        <button class="icon-btn save" onclick="saveAndShare()" title="Share/Save">⏏</button>
     </div>
 
-    <!-- HISTORY MODAL -->
     <div id="history-modal">
         <div class="modal-header">
             <span>History</span>
@@ -381,13 +373,11 @@
     }
 
     function handleInput(idx, val) {
-        // Screen
         document.getElementById(`disp-${idx}`).innerText = val;
         const slider = document.getElementById(`slider-${idx}`);
         const percent = (val / 10) * 100;
         slider.style.background = `linear-gradient(to right, var(--accent) ${percent}%, #333 ${percent}%)`;
         
-        // Export
         document.getElementById(`ex-score-${idx}`).innerText = val;
         document.getElementById(`ex-bar-${idx}`).style.width = `${percent}%`;
 
@@ -422,28 +412,66 @@
         document.getElementById('ex-artist').innerText = document.getElementById('in-artist').value || "Artist";
     }
 
-    function saveAndDownload() {
-        const album = document.getElementById('in-album').value || "Album";
-        const artist = document.getElementById('in-artist').value;
-        const total = document.getElementById('total-score').innerText.split('/')[0];
-        
+    // UPDATED: Save Logic with Duplicate Check
+    function saveToHistory(album, artist, total) {
         const scores = CATEGORIES.map((_, i) => document.getElementById(`slider-${i}`).value);
         let history = JSON.parse(localStorage.getItem('compactRates') || "[]");
+
+        // DUPLICATE CHECK
+        // If the most recent entry has the same Album, Artist, and Score, don't save again.
+        if (history.length > 0) {
+            const last = history[0];
+            if (last.album === album && last.artist === artist && last.total == total) {
+                console.log("Duplicate rating ignored.");
+                return; 
+            }
+        }
+
         const id = Date.now();
         history.unshift({ id, date: id, album, artist, scores, total });
         localStorage.setItem('compactRates', JSON.stringify(history));
+    }
+
+    // UPDATED: Share/Save Logic
+    function saveAndShare() {
+        const album = document.getElementById('in-album').value || "Album";
+        const artist = document.getElementById('in-artist').value || "Artist";
+        const total = document.getElementById('total-score').innerText.split('/')[0];
+        
+        // 1. Save to History (Smart Check)
+        saveToHistory(album, artist, total);
 
         const element = document.getElementById('export-container');
+        const filename = `${album.replace(/\s+/g, '_')}_rating.png`;
+
         html2canvas(element, { 
-            scale: 1, 
+            scale: 2, // High Res
             backgroundColor: "#111", 
             windowWidth: 1200,
             windowHeight: 1200
         }).then(canvas => {
-            const link = document.createElement('a');
-            link.download = `${album.replace(/\s+/g, '_')}_rating.png`;
-            link.href = canvas.toDataURL();
-            link.click();
+            canvas.toBlob(async (blob) => {
+                const file = new File([blob], filename, { type: 'image/png' });
+                
+                // 2. Check for Share Support (Mobile)
+                if (navigator.canShare && navigator.canShare({ files: [file] })) {
+                    try {
+                        await navigator.share({
+                            files: [file],
+                            title: 'Album Rating',
+                            text: `I rated ${album} by ${artist} a ${total}/100!`
+                        });
+                    } catch (err) {
+                        console.log('Share failed or canceled', err);
+                    }
+                } else {
+                    // 3. Fallback for Desktop
+                    const link = document.createElement('a');
+                    link.download = filename;
+                    link.href = canvas.toDataURL();
+                    link.click();
+                }
+            }, 'image/png');
         });
     }
 
